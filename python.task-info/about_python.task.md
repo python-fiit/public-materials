@@ -9,7 +9,7 @@
 взаимодействие с «заказчиком» работы и как следствие - неструктурированные задачи, нечеткие формулировки, новые пожелания (в рамках python.task количество пожеланий мы все же ограничиваением).
 *  Научиться решать типичные задачи, возникающие при разработке прикладных программ.
 
-Подробнее в [ЧаВо](https://docs.google.com/document/d/10un6fuyHLRj9J516SFnHcizXW7QQuF8efjvAW8heJF8/edit?usp=sharing)
+Подробнее в [ЧаВо](https://github.com/python-fiit/public-materials/blob/master/python.task-info/python.faq.md)
 
 Общие требования:
 -  Задача проверяется только в том случае, когда она закреплена за студентом в системе anytask.
@@ -43,7 +43,7 @@
 
 
 Пожалуйста, ознакомьтесь с другими материалами: 
-* [ЧаВо](https://docs.google.com/document/d/10un6fuyHLRj9J516SFnHcizXW7QQuF8efjvAW8heJF8/edit?usp=sharing)
+* [ЧаВо](https://github.com/python-fiit/public-materials/blob/master/python.task-info/python.faq.md)
 * [Памятка по отправке решений](https://docs.google.com/document/d/1Qh_VHo-xDm0lBDfsUQOfdrXT1vuBBjW7f9HcACZuygA/edit)
 * [Reference-решение](https://github.com/victorsamun/minesweeper)
 
