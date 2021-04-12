@@ -6,7 +6,7 @@ import functools
 
 # 1. operators
 
-s = functools.reduce(operators.mul, range(1,10))
+s = functools.reduce(operator.mul, range(1, 10))
 print(s)
 
 # 2. builtins
@@ -18,19 +18,19 @@ pprint(g)
 pprint(list(g))
 
 # any/all
-dna = 'ACCTGTGCTGCCTG' # TODO: find real DNA
+dna = 'ACCTGTGCTGCCTG'  # TODO: find real DNA
 monke_genes = ['AAAAAA', 'CCCC', 'GTGC']
 
-if any( (substr in s) for substr in monke_genes ):
+if any((substr in s) for substr in monke_genes):
     print('Monke')
 
-if all( (substr in s) for substr in monke_genes ):
+if all((substr in s) for substr in monke_genes):
     print('VERY Monke')
 
 # zip
 names = ['aa', 'bb', 'cc']
 surnames = range(2)
-middlenames = ('na'*i for i in range(4) )
+middlenames = ('na' * i for i in range(4))
 z = zip(names, surnames, middlenames)
 
 pprint(list(z))
@@ -39,11 +39,10 @@ pprint(list(z))
 
 print("Just go see https://docs.python.org/3/library/itertools.html ;)")
 
-# one of most useful is probably chain
+# one of the most useful is probably the chain
 links = ['Филонить', 'Азбука', 'Физика', 'Филин', 'Ферма']
 predicate = lambda x: 'фил' in x.casefold()
 
-ordered_links = itertools.chain(filter(predicate, links), itertools.filterfalse(predicate, links))
+ordered_links = itertools.chain(filter(predicate, links),
+                                itertools.filterfalse(predicate, links))
 pprint(list(ordered_links))
-
-
