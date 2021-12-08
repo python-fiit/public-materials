@@ -1,0 +1,694 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1" width="1200" height="390" onload="init(evt)" viewBox="0 0 1200 390" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<!-- Flame graph stack visualization. See https://github.com/brendangregg/FlameGraph for latest version, and http://www.brendangregg.com/flamegraphs.html for examples. -->
+<!-- NOTES:  -->
+<defs >
+	<linearGradient id="background" y1="0" y2="1" x1="0" x2="0" >
+		<stop stop-color="#eeeeee" offset="5%" />
+		<stop stop-color="#eeeeb0" offset="95%" />
+	</linearGradient>
+</defs>
+<style type="text/css">
+	.func_g:hover { stroke:black; stroke-width:0.5; cursor:pointer; }
+</style>
+<script type="text/ecmascript">
+<![CDATA[
+	var details, searchbtn, matchedtxt, svg;
+	function init(evt) {
+		details = document.getElementById("details").firstChild;
+		searchbtn = document.getElementById("search");
+		matchedtxt = document.getElementById("matched");
+		svg = document.getElementsByTagName("svg")[0];
+		searching = 0;
+	}
+
+	// mouse-over for info
+	function s(node) {		// show
+		info = g_to_text(node);
+		details.nodeValue = "Function: " + info;
+	}
+	function c() {			// clear
+		details.nodeValue = ' ';
+	}
+
+	// ctrl-F for search
+	window.addEventListener("keydown",function (e) {
+		if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
+			e.preventDefault();
+			search_prompt();
+		}
+	})
+
+	// functions
+	function find_child(parent, name, attr) {
+		var children = parent.childNodes;
+		for (var i=0; i<children.length;i++) {
+			if (children[i].tagName == name)
+				return (attr != undefined) ? children[i].attributes[attr].value : children[i];
+		}
+		return;
+	}
+	function orig_save(e, attr, val) {
+		if (e.attributes["_orig_"+attr] != undefined) return;
+		if (e.attributes[attr] == undefined) return;
+		if (val == undefined) val = e.attributes[attr].value;
+		e.setAttribute("_orig_"+attr, val);
+	}
+	function orig_load(e, attr) {
+		if (e.attributes["_orig_"+attr] == undefined) return;
+		e.attributes[attr].value = e.attributes["_orig_"+attr].value;
+		e.removeAttribute("_orig_"+attr);
+	}
+	function g_to_text(e) {
+		var text = find_child(e, "title").firstChild.nodeValue;
+		return (text)
+	}
+	function g_to_func(e) {
+		var func = g_to_text(e);
+		// if there's any manipulation we want to do to the function
+		// name before it's searched, do it here before returning.
+		return (func);
+	}
+	function update_text(e) {
+		var r = find_child(e, "rect");
+		var t = find_child(e, "text");
+		var w = parseFloat(r.attributes["width"].value) -3;
+		var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+		t.attributes["x"].value = parseFloat(r.attributes["x"].value) +3;
+
+		// Smaller than this size won't fit anything
+		if (w < 2*12*0.59) {
+			t.textContent = "";
+			return;
+		}
+
+		t.textContent = txt;
+		// Fit in full text width
+		if (/^ *$/.test(txt) || t.getSubStringLength(0, txt.length) < w)
+			return;
+
+		for (var x=txt.length-2; x>0; x--) {
+			if (t.getSubStringLength(0, x+2) <= w) {
+				t.textContent = txt.substring(0,x) + "..";
+				return;
+			}
+		}
+		t.textContent = "";
+	}
+
+	// zoom
+	function zoom_reset(e) {
+		if (e.attributes != undefined) {
+			orig_load(e, "x");
+			orig_load(e, "width");
+		}
+		if (e.childNodes == undefined) return;
+		for(var i=0, c=e.childNodes; i<c.length; i++) {
+			zoom_reset(c[i]);
+		}
+	}
+	function zoom_child(e, x, ratio) {
+		if (e.attributes != undefined) {
+			if (e.attributes["x"] != undefined) {
+				orig_save(e, "x");
+				e.attributes["x"].value = (parseFloat(e.attributes["x"].value) - x - 10) * ratio + 10;
+				if(e.tagName == "text") e.attributes["x"].value = find_child(e.parentNode, "rect", "x") + 3;
+			}
+			if (e.attributes["width"] != undefined) {
+				orig_save(e, "width");
+				e.attributes["width"].value = parseFloat(e.attributes["width"].value) * ratio;
+			}
+		}
+
+		if (e.childNodes == undefined) return;
+		for(var i=0, c=e.childNodes; i<c.length; i++) {
+			zoom_child(c[i], x-10, ratio);
+		}
+	}
+	function zoom_parent(e) {
+		if (e.attributes) {
+			if (e.attributes["x"] != undefined) {
+				orig_save(e, "x");
+				e.attributes["x"].value = 10;
+			}
+			if (e.attributes["width"] != undefined) {
+				orig_save(e, "width");
+				e.attributes["width"].value = parseInt(svg.width.baseVal.value) - (10*2);
+			}
+		}
+		if (e.childNodes == undefined) return;
+		for(var i=0, c=e.childNodes; i<c.length; i++) {
+			zoom_parent(c[i]);
+		}
+	}
+	function zoom(node) {
+		var attr = find_child(node, "rect").attributes;
+		var width = parseFloat(attr["width"].value);
+		var xmin = parseFloat(attr["x"].value);
+		var xmax = parseFloat(xmin + width);
+		var ymin = parseFloat(attr["y"].value);
+		var ratio = (svg.width.baseVal.value - 2*10) / width;
+
+		// XXX: Workaround for JavaScript float issues (fix me)
+		var fudge = 0.0001;
+
+		var unzoombtn = document.getElementById("unzoom");
+		unzoombtn.style["opacity"] = "1.0";
+
+		var el = document.getElementsByTagName("g");
+		for(var i=0;i<el.length;i++){
+			var e = el[i];
+			var a = find_child(e, "rect").attributes;
+			var ex = parseFloat(a["x"].value);
+			var ew = parseFloat(a["width"].value);
+			// Is it an ancestor
+			if (1 == 0) {
+				var upstack = parseFloat(a["y"].value) > ymin;
+			} else {
+				var upstack = parseFloat(a["y"].value) < ymin;
+			}
+			if (upstack) {
+				// Direct ancestor
+				if (ex <= xmin && (ex+ew+fudge) >= xmax) {
+					e.style["opacity"] = "0.5";
+					zoom_parent(e);
+					e.onclick = function(e){unzoom(); zoom(this);};
+					update_text(e);
+				}
+				// not in current path
+				else
+					e.style["display"] = "none";
+			}
+			// Children maybe
+			else {
+				// no common path
+				if (ex < xmin || ex + fudge >= xmax) {
+					e.style["display"] = "none";
+				}
+				else {
+					zoom_child(e, xmin, ratio);
+					e.onclick = function(e){zoom(this);};
+					update_text(e);
+				}
+			}
+		}
+	}
+	function unzoom() {
+		var unzoombtn = document.getElementById("unzoom");
+		unzoombtn.style["opacity"] = "0.0";
+
+		var el = document.getElementsByTagName("g");
+		for(i=0;i<el.length;i++) {
+			el[i].style["display"] = "block";
+			el[i].style["opacity"] = "1";
+			zoom_reset(el[i]);
+			update_text(el[i]);
+		}
+	}
+
+	// search
+	function reset_search() {
+		var el = document.getElementsByTagName("rect");
+		for (var i=0; i < el.length; i++) {
+			orig_load(el[i], "fill")
+		}
+	}
+	function search_prompt() {
+		if (!searching) {
+			var term = prompt("Enter a search term (regexp " +
+			    "allowed, eg: ^ext4_)", "");
+			if (term != null) {
+				search(term)
+			}
+		} else {
+			reset_search();
+			searching = 0;
+			searchbtn.style["opacity"] = "0.1";
+			searchbtn.firstChild.nodeValue = "Search"
+			matchedtxt.style["opacity"] = "0.0";
+			matchedtxt.firstChild.nodeValue = ""
+		}
+	}
+	function search(term) {
+		var re = new RegExp(term);
+		var el = document.getElementsByTagName("g");
+		var matches = new Object();
+		var maxwidth = 0;
+		for (var i = 0; i < el.length; i++) {
+			var e = el[i];
+			if (e.attributes["class"].value != "func_g")
+				continue;
+			var func = g_to_func(e);
+			var rect = find_child(e, "rect");
+			if (rect == null) {
+				// the rect might be wrapped in an anchor
+				// if nameattr href is being used
+				if (rect = find_child(e, "a")) {
+				    rect = find_child(r, "rect");
+				}
+			}
+			if (func == null || rect == null)
+				continue;
+
+			// Save max width. Only works as we have a root frame
+			var w = parseFloat(rect.attributes["width"].value);
+			if (w > maxwidth)
+				maxwidth = w;
+
+			if (func.match(re)) {
+				// highlight
+				var x = parseFloat(rect.attributes["x"].value);
+				orig_save(rect, "fill");
+				rect.attributes["fill"].value =
+				    "rgb(230,0,230)";
+
+				// remember matches
+				if (matches[x] == undefined) {
+					matches[x] = w;
+				} else {
+					if (w > matches[x]) {
+						// overwrite with parent
+						matches[x] = w;
+					}
+				}
+				searching = 1;
+			}
+		}
+		if (!searching)
+			return;
+
+		searchbtn.style["opacity"] = "1.0";
+		searchbtn.firstChild.nodeValue = "Reset Search"
+
+		// calculate percent matched, excluding vertical overlap
+		var count = 0;
+		var lastx = -1;
+		var lastw = 0;
+		var keys = Array();
+		for (k in matches) {
+			if (matches.hasOwnProperty(k))
+				keys.push(k);
+		}
+		// sort the matched frames by their x location
+		// ascending, then width descending
+		keys.sort(function(a, b){
+			return a - b;
+		});
+		// Step through frames saving only the biggest bottom-up frames
+		// thanks to the sort order. This relies on the tree property
+		// where children are always smaller than their parents.
+		var fudge = 0.0001;	// JavaScript floating point
+		for (var k in keys) {
+			var x = parseFloat(keys[k]);
+			var w = matches[keys[k]];
+			if (x >= lastx + lastw - fudge) {
+				count += w;
+				lastx = x;
+				lastw = w;
+			}
+		}
+		// display matched percent
+		matchedtxt.style["opacity"] = "1.0";
+		pct = 100 * count / maxwidth;
+		if (pct == 100)
+			pct = "100"
+		else
+			pct = pct.toFixed(1)
+		matchedtxt.firstChild.nodeValue = "Matched: " + pct + "%";
+	}
+	function searchover(e) {
+		searchbtn.style["opacity"] = "1.0";
+	}
+	function searchout(e) {
+		if (searching) {
+			searchbtn.style["opacity"] = "1.0";
+		} else {
+			searchbtn.style["opacity"] = "0.1";
+		}
+	}
+]]>
+</script>
+<rect x="0.0" y="0" width="1200.0" height="390.0" fill="url(#background)"  />
+<text text-anchor="middle" x="600.00" y="24" font-size="17" font-family="Verdana" fill="rgb(0,0,0)"  >Icicle Graph</text>
+<text text-anchor="" x="10.00" y="373" font-size="12" font-family="Verdana" fill="rgb(0,0,0)" id="details" > </text>
+<text text-anchor="" x="10.00" y="24" font-size="12" font-family="Verdana" fill="rgb(0,0,0)" id="unzoom" onclick="unzoom()" style="opacity:0.0;cursor:pointer" >Reset Zoom</text>
+<text text-anchor="" x="1090.00" y="24" font-size="12" font-family="Verdana" fill="rgb(0,0,0)" id="search" onmouseover="searchover()" onmouseout="searchout()" onclick="search_prompt()" style="opacity:0.1;cursor:pointer" >Search</text>
+<text text-anchor="" x="1090.00" y="373" font-size="12" font-family="Verdana" fill="rgb(0,0,0)" id="matched" > </text>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>db_resync (dist-packages/vnc_cfg_api_server/vnc_db.py) (48,742 samples, 40.63%)</title><rect x="10.0" y="116" width="479.4" height="15.0" fill="rgb(254,44,39)" rx="2" ry="2" />
+<text text-anchor="" x="13.00" y="126.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >db_resync (dist-packages/vnc_cfg_api_server/vnc_db.py)</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>_cosc_to_dict (dist-packages/pycassa/columnfamily.py) (1,530 samples, 1.28%)</title><rect x="383.3" y="260" width="15.0" height="15.0" fill="rgb(251,124,39)" rx="2" ry="2" />
+<text text-anchor="" x="386.25" y="270.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>__send_chunk (dist-packages/gevent/_socket2.py) (710 samples, 0.59%)</title><rect x="533.5" y="228" width="7.0" height="15.0" fill="rgb(206,67,28)" rx="2" ry="2" />
+<text text-anchor="" x="536.50" y="238.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>send (dist-packages/gevent/_sslgte279.py) (710 samples, 0.59%)</title><rect x="533.5" y="244" width="7.0" height="15.0" fill="rgb(211,188,54)" rx="2" ry="2" />
+<text text-anchor="" x="536.50" y="254.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>object_read (dist-packages/cfgm_common/vnc_cassandra.py) (24,421 samples, 20.36%)</title><rect x="249.1" y="196" width="240.2" height="15.0" fill="rgb(232,100,43)" rx="2" ry="2" />
+<text text-anchor="" x="252.08" y="206.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >object_read (dist-packages/cfgm..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>_ispawn (dist-packages/gevent/pool.py) (3,356 samples, 2.80%)</title><rect x="493.8" y="100" width="33.0" height="15.0" fill="rgb(223,163,3)" rx="2" ry="2" />
+<text text-anchor="" x="496.76" y="110.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >_i..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>__str__ (dist-packages/cfgm_common/ifmap/operations.py) (1,299 samples, 1.08%)</title><rect x="169.9" y="244" width="12.7" height="15.0" fill="rgb(238,179,20)" rx="2" ry="2" />
+<text text-anchor="" x="172.86" y="254.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>_build_request (dist-packages/vnc_cfg_api_server/vnc_ifmap_client.py) (6,038 samples, 5.03%)</title><rect x="123.2" y="228" width="59.4" height="15.0" fill="rgb(233,200,38)" rx="2" ry="2" />
+<text text-anchor="" x="126.25" y="238.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >_build..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>__init__ (dist-packages/cfgm_common/ifmap/metadata.py) (223 samples, 0.19%)</title><rect x="85.7" y="212" width="2.2" height="15.0" fill="rgb(210,200,24)" rx="2" ry="2" />
+<text text-anchor="" x="88.73" y="222.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>multiget (dist-packages/pycassa/columnfamily.py) (10,924 samples, 9.11%)</title><rect x="381.8" y="244" width="107.5" height="15.0" fill="rgb(249,89,52)" rx="2" ry="2" />
+<text text-anchor="" x="384.84" y="254.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >multiget (dis..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>all (119,972 samples, 100%)</title><rect x="10.0" y="36" width="1180.0" height="15.0" fill="rgb(210,10,9)" rx="2" ry="2" />
+<text text-anchor="" x="13.00" y="46.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>start (dist-packages/gevent/pool.py) (1,398 samples, 1.17%)</title><rect x="513.0" y="132" width="13.8" height="15.0" fill="rgb(251,62,19)" rx="2" ry="2" />
+<text text-anchor="" x="516.01" y="142.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>__str__ (dist-packages/cfgm_common/ifmap/operations.py) (259 samples, 0.22%)</title><rect x="42.2" y="228" width="2.6" height="15.0" fill="rgb(231,219,35)" rx="2" ry="2" />
+<text text-anchor="" x="45.23" y="238.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>_dbe_resync (dist-packages/vnc_cfg_api_server/vnc_db.py) (48,220 samples, 40.19%)</title><rect x="15.0" y="164" width="474.3" height="15.0" fill="rgb(231,12,5)" rx="2" ry="2" />
+<text text-anchor="" x="18.01" y="174.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >_dbe_resync (dist-packages/vnc_cfg_api_server/vnc_db.py)</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>_col_to_dict (dist-packages/pycassa/columnfamily.py) (797 samples, 0.66%)</title><rect x="390.0" y="276" width="7.8" height="15.0" fill="rgb(233,127,27)" rx="2" ry="2" />
+<text text-anchor="" x="392.98" y="286.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>multiget_slice (dist-packages/pycassa/cassandra/Cassandra.py) (9,178 samples, 7.65%)</title><rect x="398.9" y="292" width="90.3" height="15.0" fill="rgb(237,16,24)" rx="2" ry="2" />
+<text text-anchor="" x="401.92" y="302.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >multiget_s..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>raw_decode (dist-packages/simplejson/decoder.py) (3,106 samples, 2.59%)</title><rect x="344.7" y="276" width="30.6" height="15.0" fill="rgb(248,32,36)" rx="2" ry="2" />
+<text text-anchor="" x="347.71" y="286.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >ra..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>dead (dist-packages/gevent/greenlet.py) (646 samples, 0.54%)</title><rect x="519.7" y="196" width="6.4" height="15.0" fill="rgb(242,119,52)" rx="2" ry="2" />
+<text text-anchor="" x="522.73" y="206.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>loads (dist-packages/cfgm_common/jsonutils.py) (4,404 samples, 3.67%)</title><rect x="331.9" y="228" width="43.4" height="15.0" fill="rgb(247,8,20)" rx="2" ry="2" />
+<text text-anchor="" x="334.94" y="238.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >load..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>&lt;module&gt; (bin/contrail-api) (48,742 samples, 40.63%)</title><rect x="10.0" y="52" width="479.4" height="15.0" fill="rgb(214,218,16)" rx="2" ry="2" />
+<text text-anchor="" x="13.00" y="62.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >&lt;module&gt; (bin/contrail-api)</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>spawn (dist-packages/gevent/pool.py) (1,612 samples, 1.34%)</title><rect x="510.9" y="116" width="15.9" height="15.0" fill="rgb(224,136,38)" rx="2" ry="2" />
+<text text-anchor="" x="513.91" y="126.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>_publish_update (dist-packages/vnc_cfg_api_server/vnc_ifmap_client.py) (6,979 samples, 5.82%)</title><rect x="115.4" y="212" width="68.7" height="15.0" fill="rgb(210,1,30)" rx="2" ry="2" />
+<text text-anchor="" x="118.42" y="222.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >_publis..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>post (dist-packages/geventhttpclient/client.py) (783 samples, 0.65%)</title><rect x="532.8" y="164" width="7.7" height="15.0" fill="rgb(207,220,2)" rx="2" ry="2" />
+<text text-anchor="" x="535.80" y="174.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>_publish_to_ifmap (dist-packages/vnc_cfg_api_server/vnc_ifmap_client.py) (973 samples, 0.81%)</title><rect x="531.0" y="132" width="9.5" height="15.0" fill="rgb(243,114,52)" rx="2" ry="2" />
+<text text-anchor="" x="533.95" y="142.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>_on_result (dist-packages/gevent/pool.py) (445 samples, 0.37%)</title><rect x="1185.5" y="84" width="4.4" height="15.0" fill="rgb(254,40,6)" rx="2" ry="2" />
+<text text-anchor="" x="1188.50" y="94.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>_publish_to_ifmap_enqueue (dist-packages/vnc_cfg_api_server/vnc_ifmap_client.py) (238 samples, 0.20%)</title><rect x="44.8" y="212" width="2.3" height="15.0" fill="rgb(235,185,17)" rx="2" ry="2" />
+<text text-anchor="" x="47.78" y="222.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>decode (encodings/utf_8.py) (786 samples, 0.66%)</title><rect x="220.3" y="212" width="7.7" height="15.0" fill="rgb(211,10,21)" rx="2" ry="2" />
+<text text-anchor="" x="223.26" y="222.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>str_to_class (dist-packages/cfgm_common/utils.py) (216 samples, 0.18%)</title><rect x="244.7" y="212" width="2.1" height="15.0" fill="rgb(222,88,20)" rx="2" ry="2" />
+<text text-anchor="" x="247.68" y="222.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>export (dist-packages/vnc_cfg_api_server/gen/resource_xsd.py) (524 samples, 0.44%)</title><rect x="235.4" y="228" width="5.1" height="15.0" fill="rgb(250,77,46)" rx="2" ry="2" />
+<text text-anchor="" x="238.38" y="238.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>_read_ref (dist-packages/cfgm_common/vnc_cassandra.py) (485 samples, 0.40%)</title><rect x="299.8" y="228" width="4.7" height="15.0" fill="rgb(236,49,43)" rx="2" ry="2" />
+<text text-anchor="" x="302.76" y="238.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>_ifmap_dequeue_task (dist-packages/vnc_cfg_api_server/vnc_ifmap_client.py) (1,655 samples, 1.38%)</title><rect x="527.5" y="84" width="16.3" height="15.0" fill="rgb(237,67,41)" rx="2" ry="2" />
+<text text-anchor="" x="530.51" y="94.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>_render_obj_from_db (dist-packages/cfgm_common/vnc_cassandra.py) (7,106 samples, 5.92%)</title><rect x="253.9" y="212" width="69.9" height="15.0" fill="rgb(242,88,50)" rx="2" ry="2" />
+<text text-anchor="" x="256.89" y="222.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >_render..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>iterencode (dist-packages/simplejson/encoder.py) (1,308 samples, 1.09%)</title><rect x="207.4" y="276" width="12.9" height="15.0" fill="rgb(235,151,11)" rx="2" ry="2" />
+<text text-anchor="" x="210.39" y="286.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>_publish (dist-packages/vnc_cfg_api_server/vnc_ifmap_client.py) (1,034 samples, 0.86%)</title><rect x="530.4" y="116" width="10.1" height="15.0" fill="rgb(214,74,49)" rx="2" ry="2" />
+<text text-anchor="" x="533.36" y="126.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>loads (dist-packages/simplejson/__init__.py) (4,177 samples, 3.48%)</title><rect x="334.2" y="244" width="41.1" height="15.0" fill="rgb(241,125,30)" rx="2" ry="2" />
+<text text-anchor="" x="337.17" y="254.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >loa..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>wrapper (dist-packages/cfgm_common/vnc_cassandra.py) (11,593 samples, 9.66%)</title><rect x="375.3" y="228" width="114.0" height="15.0" fill="rgb(228,75,46)" rx="2" ry="2" />
+<text text-anchor="" x="378.26" y="238.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >wrapper (dist-..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>object_alloc (dist-packages/vnc_cfg_api_server/vnc_ifmap_client.py) (439 samples, 0.37%)</title><rect x="22.2" y="180" width="4.3" height="15.0" fill="rgb(241,159,31)" rx="2" ry="2" />
+<text text-anchor="" x="25.16" y="190.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>dead (dist-packages/gevent/greenlet.py) (1,506 samples, 1.26%)</title><rect x="496.1" y="148" width="14.8" height="15.0" fill="rgb(208,159,37)" rx="2" ry="2" />
+<text text-anchor="" x="499.10" y="158.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>_build_request (dist-packages/vnc_cfg_api_server/vnc_ifmap_client.py) (1,049 samples, 0.87%)</title><rect x="34.5" y="212" width="10.3" height="15.0" fill="rgb(242,214,51)" rx="2" ry="2" />
+<text text-anchor="" x="37.46" y="222.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>__str__ (dist-packages/cfgm_common/ifmap/id.py) (471 samples, 0.39%)</title><rect x="145.4" y="244" width="4.6" height="15.0" fill="rgb(252,50,37)" rx="2" ry="2" />
+<text text-anchor="" x="148.38" y="254.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sendall (dist-packages/gevent/_sslgte279.py) (718 samples, 0.60%)</title><rect x="533.4" y="196" width="7.1" height="15.0" fill="rgb(211,130,10)" rx="2" ry="2" />
+<text text-anchor="" x="536.44" y="206.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>__get__ (dist-packages/gevent/greenlet.py) (464 samples, 0.39%)</title><rect x="514.9" y="180" width="4.5" height="15.0" fill="rgb(243,157,42)" rx="2" ry="2" />
+<text text-anchor="" x="517.88" y="190.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>ready (dist-packages/gevent/greenlet.py) (1,528 samples, 1.27%)</title><rect x="495.9" y="132" width="15.0" height="15.0" fill="rgb(249,118,54)" rx="2" ry="2" />
+<text text-anchor="" x="498.88" y="142.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>_ispawn (dist-packages/gevent/pool.py) (3,427 samples, 2.86%)</title><rect x="493.1" y="84" width="33.7" height="15.0" fill="rgb(244,79,14)" rx="2" ry="2" />
+<text text-anchor="" x="496.06" y="94.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >_i..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>encode (dist-packages/simplejson/encoder.py) (1,792 samples, 1.49%)</title><rect x="202.6" y="260" width="17.7" height="15.0" fill="rgb(245,143,30)" rx="2" ry="2" />
+<text text-anchor="" x="205.63" y="270.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>wrapper (dist-packages/cfgm_common/__init__.py) (213 samples, 0.18%)</title><rect x="541.7" y="116" width="2.1" height="15.0" fill="rgb(224,179,32)" rx="2" ry="2" />
+<text text-anchor="" x="544.69" y="126.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>run (dist-packages/gevent/hub.py) (65,669 samples, 54.74%)</title><rect x="544.1" y="52" width="645.9" height="15.0" fill="rgb(208,73,33)" rx="2" ry="2" />
+<text text-anchor="" x="547.10" y="62.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >run (dist-packages/gevent/hub.py)</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>wrapper (dist-packages/cfgm_common/vnc_cassandra.py) (48,742 samples, 40.63%)</title><rect x="10.0" y="132" width="479.4" height="15.0" fill="rgb(250,134,43)" rx="2" ry="2" />
+<text text-anchor="" x="13.00" y="142.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >wrapper (dist-packages/cfgm_common/vnc_cassandra.py)</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>__init__ (dist-packages/vnc_cfg_api_server/gen/resource_xsd.py) (2,795 samples, 2.33%)</title><rect x="87.9" y="212" width="27.5" height="15.0" fill="rgb(217,161,46)" rx="2" ry="2" />
+<text text-anchor="" x="90.93" y="222.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >_..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>_notify_links (dist-packages/gevent/greenlet.py) (559 samples, 0.47%)</title><rect x="1184.4" y="68" width="5.5" height="15.0" fill="rgb(225,210,2)" rx="2" ry="2" />
+<text text-anchor="" x="1187.37" y="78.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>add (dist-packages/gevent/pool.py) (1,294 samples, 1.08%)</title><rect x="513.4" y="148" width="12.7" height="15.0" fill="rgb(243,15,10)" rx="2" ry="2" />
+<text text-anchor="" x="516.36" y="158.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>__str__ (dist-packages/cfgm_common/ifmap/metadata.py) (2,018 samples, 1.68%)</title><rect x="150.0" y="244" width="19.9" height="15.0" fill="rgb(249,92,3)" rx="2" ry="2" />
+<text text-anchor="" x="153.01" y="254.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>decode (encodings/utf_8.py) (408 samples, 0.34%)</title><rect x="194.2" y="228" width="4.0" height="15.0" fill="rgb(229,164,0)" rx="2" ry="2" />
+<text text-anchor="" x="197.19" y="238.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>attr (dist-packages/cfgm_common/ifmap/util.py) (973 samples, 0.81%)</title><rect x="157.8" y="260" width="9.6" height="15.0" fill="rgb(211,172,52)" rx="2" ry="2" />
+<text text-anchor="" x="160.83" y="270.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>decode (encodings/utf_8.py) (1,958 samples, 1.63%)</title><rect x="304.5" y="228" width="19.3" height="15.0" fill="rgb(235,126,8)" rx="2" ry="2" />
+<text text-anchor="" x="307.53" y="238.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>wrapper (dist-packages/cfgm_common/vnc_cassandra.py) (24,653 samples, 20.55%)</title><rect x="246.8" y="180" width="242.5" height="15.0" fill="rgb(211,206,15)" rx="2" ry="2" />
+<text text-anchor="" x="249.80" y="190.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >wrapper (dist-packages/cfgm_comm..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>walk (dist-packages/cfgm_common/vnc_cassandra.py) (48,742 samples, 40.63%)</title><rect x="10.0" y="148" width="479.4" height="15.0" fill="rgb(231,110,14)" rx="2" ry="2" />
+<text text-anchor="" x="13.00" y="158.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >walk (dist-packages/cfgm_common/vnc_cassandra.py)</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>__init__ (dist-packages/pycassa/cassandra/ttypes.py) (2,397 samples, 2.00%)</title><rect x="464.5" y="340" width="23.6" height="15.0" fill="rgb(230,138,46)" rx="2" ry="2" />
+<text text-anchor="" x="467.53" y="350.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >_..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>object_set (dist-packages/vnc_cfg_api_server/vnc_ifmap_client.py) (20,124 samples, 16.77%)</title><rect x="48.9" y="196" width="197.9" height="15.0" fill="rgb(205,221,26)" rx="2" ry="2" />
+<text text-anchor="" x="51.87" y="206.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >object_set (dist-packages..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>rawlink (dist-packages/gevent/greenlet.py) (1,197 samples, 1.00%)</title><rect x="514.3" y="164" width="11.8" height="15.0" fill="rgb(205,11,36)" rx="2" ry="2" />
+<text text-anchor="" x="517.31" y="174.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>_publish_to_ifmap_dequeue (dist-packages/vnc_cfg_api_server/vnc_ifmap_client.py) (1,655 samples, 1.38%)</title><rect x="527.5" y="100" width="16.3" height="15.0" fill="rgb(241,60,32)" rx="2" ry="2" />
+<text text-anchor="" x="530.51" y="110.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>exportChildren (dist-packages/vnc_cfg_api_server/gen/resource_xsd.py) (1,424 samples, 1.19%)</title><rect x="229.0" y="212" width="14.0" height="15.0" fill="rgb(211,132,32)" rx="2" ry="2" />
+<text text-anchor="" x="231.96" y="222.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>exportChildren (dist-packages/vnc_cfg_api_server/gen/resource_xsd.py) (373 samples, 0.31%)</title><rect x="236.5" y="244" width="3.7" height="15.0" fill="rgb(214,72,44)" rx="2" ry="2" />
+<text text-anchor="" x="239.51" y="254.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>read (dist-packages/pycassa/cassandra/Cassandra.py) (9,066 samples, 7.56%)</title><rect x="398.9" y="324" width="89.2" height="15.0" fill="rgb(227,0,20)" rx="2" ry="2" />
+<text text-anchor="" x="401.94" y="334.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >read (dist..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>dumps (dist-packages/cfgm_common/jsonutils.py) (2,242 samples, 1.87%)</title><rect x="198.2" y="228" width="22.1" height="15.0" fill="rgb(217,119,5)" rx="2" ry="2" />
+<text text-anchor="" x="201.20" y="238.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >d..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>build_idperms_ifmap_obj (dist-packages/vnc_cfg_api_server/vnc_ifmap_client.py) (3,481 samples, 2.90%)</title><rect x="186.0" y="212" width="34.3" height="15.0" fill="rgb(217,16,44)" rx="2" ry="2" />
+<text text-anchor="" x="189.02" y="222.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >bu..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>attr (dist-packages/cfgm_common/ifmap/util.py) (783 samples, 0.65%)</title><rect x="174.9" y="260" width="7.7" height="15.0" fill="rgb(249,180,11)" rx="2" ry="2" />
+<text text-anchor="" x="177.93" y="270.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>__init__ (dist-packages/vnc_cfg_api_server/gen/resource_xsd.py) (1,671 samples, 1.39%)</title><rect x="99.0" y="228" width="16.4" height="15.0" fill="rgb(207,176,11)" rx="2" ry="2" />
+<text text-anchor="" x="101.98" y="238.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>recv_multiget_slice (dist-packages/pycassa/cassandra/Cassandra.py) (9,151 samples, 7.63%)</title><rect x="398.9" y="308" width="90.0" height="15.0" fill="rgb(209,226,27)" rx="2" ry="2" />
+<text text-anchor="" x="401.92" y="318.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >recv_multi..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>_publish_update (dist-packages/vnc_cfg_api_server/vnc_ifmap_client.py) (1,630 samples, 1.36%)</title><rect x="31.1" y="196" width="16.0" height="15.0" fill="rgb(242,72,41)" rx="2" ry="2" />
+<text text-anchor="" x="34.09" y="206.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>server_main (dist-packages/vnc_cfg_api_server/vnc_cfg_api_server.py) (48,742 samples, 40.63%)</title><rect x="10.0" y="68" width="479.4" height="15.0" fill="rgb(224,192,11)" rx="2" ry="2" />
+<text text-anchor="" x="13.00" y="78.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >server_main (dist-packages/vnc_cfg_api_server/vnc_cfg_api_server...</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>_db_init_entries (dist-packages/vnc_cfg_api_server/vnc_cfg_api_server.py) (48,742 samples, 40.63%)</title><rect x="10.0" y="100" width="479.4" height="15.0" fill="rgb(248,26,34)" rx="2" ry="2" />
+<text text-anchor="" x="13.00" y="110.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >_db_init_entries (dist-packages/vnc_cfg_api_server/vnc_cfg_api_se..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>super_greenlet_handler (dist-packages/cfgm_common/vnc_greenlets.py) (1,657 samples, 1.38%)</title><rect x="527.5" y="68" width="16.3" height="15.0" fill="rgb(227,98,42)" rx="2" ry="2" />
+<text text-anchor="" x="530.49" y="78.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>_run (dist-packages/gevent/pool.py) (3,464 samples, 2.89%)</title><rect x="492.7" y="68" width="34.1" height="15.0" fill="rgb(208,55,31)" rx="2" ry="2" />
+<text text-anchor="" x="495.69" y="78.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >_r..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>object_create (dist-packages/vnc_cfg_api_server/vnc_ifmap_client.py) (22,401 samples, 18.67%)</title><rect x="26.5" y="180" width="220.3" height="15.0" fill="rgb(211,33,51)" rx="2" ry="2" />
+<text text-anchor="" x="29.47" y="190.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >object_create (dist-packages/..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>decode (dist-packages/simplejson/decoder.py) (3,779 samples, 3.15%)</title><rect x="338.1" y="260" width="37.2" height="15.0" fill="rgb(217,34,49)" rx="2" ry="2" />
+<text text-anchor="" x="341.09" y="270.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >dec..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>request (dist-packages/geventhttpclient/client.py) (782 samples, 0.65%)</title><rect x="532.8" y="180" width="7.7" height="15.0" fill="rgb(234,87,3)" rx="2" ry="2" />
+<text text-anchor="" x="535.81" y="190.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>run (dist-packages/gevent/greenlet.py) (5,549 samples, 4.63%)</title><rect x="489.5" y="52" width="54.6" height="15.0" fill="rgb(224,98,51)" rx="2" ry="2" />
+<text text-anchor="" x="492.53" y="62.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >run (..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>multiget (dist-packages/cfgm_common/vnc_cassandra.py) (16,826 samples, 14.02%)</title><rect x="323.8" y="212" width="165.5" height="15.0" fill="rgb(237,99,31)" rx="2" ry="2" />
+<text text-anchor="" x="326.79" y="222.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >multiget (dist-packag..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>_links (dist-packages/gevent/greenlet.py) (454 samples, 0.38%)</title><rect x="515.0" y="196" width="4.4" height="15.0" fill="rgb(237,101,32)" rx="2" ry="2" />
+<text text-anchor="" x="517.98" y="206.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>execute (dist-packages/pycassa/pool.py) (9,194 samples, 7.66%)</title><rect x="398.9" y="260" width="90.4" height="15.0" fill="rgb(211,112,5)" rx="2" ry="2" />
+<text text-anchor="" x="401.85" y="270.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >execute (d..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>decode (encodings/utf_8.py) (250 samples, 0.21%)</title><rect x="167.4" y="260" width="2.5" height="15.0" fill="rgb(231,202,45)" rx="2" ry="2" />
+<text text-anchor="" x="170.40" y="270.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>sendall (dist-packages/gevent/_socket2.py) (716 samples, 0.60%)</title><rect x="533.5" y="212" width="7.0" height="15.0" fill="rgb(230,181,48)" rx="2" ry="2" />
+<text text-anchor="" x="536.46" y="222.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>__init__ (dist-packages/vnc_cfg_api_server/vnc_cfg_api_server.py) (48,742 samples, 40.63%)</title><rect x="10.0" y="84" width="479.4" height="15.0" fill="rgb(222,105,47)" rx="2" ry="2" />
+<text text-anchor="" x="13.00" y="94.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >__init__ (dist-packages/vnc_cfg_api_server/vnc_cfg_api_server.py)</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>call (dist-packages/cfgm_common/ifmap/client.py) (930 samples, 0.78%)</title><rect x="531.4" y="148" width="9.1" height="15.0" fill="rgb(231,49,20)" rx="2" ry="2" />
+<text text-anchor="" x="534.38" y="158.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>ready (dist-packages/gevent/greenlet.py) (675 samples, 0.56%)</title><rect x="519.4" y="180" width="6.7" height="15.0" fill="rgb(243,73,2)" rx="2" ry="2" />
+<text text-anchor="" x="522.45" y="190.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>new_f (dist-packages/pycassa/pool.py) (9,180 samples, 7.65%)</title><rect x="398.9" y="276" width="90.3" height="15.0" fill="rgb(238,71,44)" rx="2" ry="2" />
+<text text-anchor="" x="401.90" y="286.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  >new_f (dis..</text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>dumps (dist-packages/simplejson/__init__.py) (2,060 samples, 1.72%)</title><rect x="200.0" y="244" width="20.3" height="15.0" fill="rgb(253,204,18)" rx="2" ry="2" />
+<text text-anchor="" x="202.99" y="254.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+<g class="func_g" onmouseover="s(this)" onmouseout="c()" onclick="zoom(this)">
+<title>rawlink (dist-packages/gevent/greenlet.py) (1,621 samples, 1.35%)</title><rect x="495.0" y="116" width="15.9" height="15.0" fill="rgb(235,101,48)" rx="2" ry="2" />
+<text text-anchor="" x="497.97" y="126.5" font-size="12" font-family="Verdana" fill="rgb(0,0,0)"  ></text>
+</g>
+</svg>
