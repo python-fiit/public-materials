@@ -5,7 +5,7 @@
  * http://tswr.ru/58/Python_02
 
 ### Пятиминутка:
-https://forms.gle/WRjjJw29nvXepDeA6
+https://forms.gle/FJiLRVwFBXQGSn2K6
 
 ### Практика:
  * см. *.ipynb
