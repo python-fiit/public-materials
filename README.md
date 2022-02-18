@@ -12,7 +12,7 @@
 # Ресурсы курса
 
 * [Anytask](http://anytask.org/)
-* [telegram-канал 2021](https://t.me/joinchat/_0pLGcRODAhkYzcy)
+
 
 ### (1 семестр) Видеолекции и материалы к ним:
 - http://tswr.ru/57/Python_01
