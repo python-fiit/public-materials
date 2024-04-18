@@ -45,7 +45,7 @@
 Пожалуйста, ознакомьтесь с другими материалами: 
 * [ЧаВо](https://docs.google.com/document/d/10un6fuyHLRj9J516SFnHcizXW7QQuF8efjvAW8heJF8/edit?usp=sharing)
 * [Памятка по отправке решений](https://docs.google.com/document/d/1Qh_VHo-xDm0lBDfsUQOfdrXT1vuBBjW7f9HcACZuygA/edit)
-* [Reference-решение](https://github.com/victorsamun/minesweeper)
+* [Reference-решение](https://github.com/python-fiit/public-materials/tree/master/python.task-info/minesweeper)
 
 Ограничения:
 
