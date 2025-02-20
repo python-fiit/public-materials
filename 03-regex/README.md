@@ -1,7 +1,7 @@
 # Занятие 3. Регулярные выражения
 
 К занятию посмотреть 3ю лекцию про регулярки:
- * http://tswr.ru/60/Python_03
+ * [Python_03](https://ulearn.me/course/py/Regulyarnye_yazyki_Klini_1ea6246f-cf41-51e8-8ec4-a42f47426d9d)
 
 ### Практика:
  * см. Practise.ipynb

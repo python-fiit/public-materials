@@ -1,8 +1,8 @@
 # Занятие 2. Базовые структуры
 
 К занятию посмотреть первые 2 лекции
- * http://tswr.ru/57/Python_01
- * http://tswr.ru/58/Python_02
+ * [Python 01](https://ulearn.me/course/py/Istoriya_yazyka_motivatsiya_resursy_5972f4f8-4b23-559f-bf1a-035b29412700)
+ * [Python 02](https://ulearn.me/course/py/Ob_ekty_i_peremennye_d7a2fb4e-9955-5843-8573-51a55763f2c5)
 
 ### Пятиминутка:
 https://forms.gle/FJiLRVwFBXQGSn2K6
@@ -11,7 +11,7 @@ https://forms.gle/FJiLRVwFBXQGSn2K6
  * см. *.ipynb
 
 ### Задача на практику:
-Посчитать общую статистику имён в http://[shannon.usu.edu.ru/ftp/python/hw2/home.html](http://shannon.usu.edu.ru/ftp/python/hw2/home.html). Парсинг файла с помощью str.find, [:].
+Посчитать общую статистику имён в [home.html](https://github.com/python-fiit/public-materials/blob/master/02-basictypes/hw/hw2/home.html). Парсинг файла с помощью str.find, [:].
 
 Обратите внимание, что страница в кодировке cp1251
 
