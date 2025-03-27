@@ -1,0 +1,12 @@
+FastestPage: /images/box/6.png
+MostActiveClient: 192.168.65.56
+MostActiveClientByDay: 
+  2013-02-17: 192.168.65.56
+  2013-02-18: 192.168.65.56
+  2013-02-19: 192.168.65.56
+
+MostPopularBrowser: Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; Trident/5.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.3; .NET4.0C; .NET4.0E)
+MostPopularPage: /pause/ajaxPause?pauseConfigId=&admin=0
+SlowestAveragePage: /lib/icq/mlICQ2.php
+SlowestPage: /lib/icq/mlICQ2.php
+
