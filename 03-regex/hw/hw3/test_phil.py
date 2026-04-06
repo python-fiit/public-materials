@@ -5,18 +5,29 @@ from urllib.request import urlopen
 from urllib.parse import quote
 from urllib.error import URLError, HTTPError
 import unittest
-
+try:
+    import httpx
+except ModuleNotFoundError:
+    import pip
+    pip.main(['install', '--quiet', 'httpx'])
+    import httpx
 
 PHIL = 'Философия'
 
 
 def _has_link(name, link):
+    url = 'https://ru.wikipedia.org/wiki/' + quote(name)
+    # Указываем User-Agent с описанием и почтой (требование Wikimedia), желательно личной
+    headers = {
+        'User-Agent': 'CourseHomeworkBot/1.0 (Educational bot for programming course; mailto:anytask[at]yandex.ru)'
+    }
     try:
-        with urlopen('http://ru.wikipedia.org/wiki/' + quote(name)) as page:
-            content = page.read().decode('utf-8', errors='ignore')
-    except (URLError, HTTPError):
+        response = httpx.get(url, headers=headers, follow_redirects=True)
+        response.raise_for_status()
+        content = response.text
+    except (httpx.HTTPStatusError, httpx.RequestError):
         return False
-
+    
     quoted_link = quote(link, safe='()_,-/')
     return (quoted_link in content or
             quoted_link.replace('/', '%2F') in content)
@@ -132,7 +143,7 @@ class TestChainFinder(unittest.TestCase):
 
     def test_russian_yo_ye(self):
         self._check('Самолет')
-        self._check('Самолёт')
+        self._check('Самолёт')
 
 
 def make_suite():
