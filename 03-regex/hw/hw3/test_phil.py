@@ -17,9 +17,9 @@ PHIL = 'Философия'
 
 def _has_link(name, link):
     url = 'https://ru.wikipedia.org/wiki/' + quote(name)
-    # Указываем User-Agent с описанием и почтой (требование Wikimedia), желательно личной
+    # Указываем User-Agent с описанием и почтой (требование Wikimedia), желательно личной, пробуйте разные варианты
     headers = {
-        'User-Agent': 'CourseHomeworkBot/1.0 (Educational bot for programming course; mailto:anytask[at]yandex.ru)'
+        'User-Agent': 'CourseHomeworkBot/1.0 (Educational bot for programming course; mailto:anytask@yandex.ru)'
     }
     try:
         response = httpx.get(url, headers=headers, follow_redirects=True)
